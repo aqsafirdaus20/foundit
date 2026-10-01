@@ -1,0 +1,76 @@
+// FoundIt data model (SQL Server). Models are added module by module.
+// SQL Server has no enums or array columns in Prisma: status-like fields are
+// strings validated with zod, and lists (images, keywords) get their own tables.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlserver"
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  username     String   @unique
+  passwordHash String
+  name         String
+  phone        String?
+  role         String   @default("user") // "user" | "admin", enforced in code
+  createdAt    DateTime @default(now())
+  items        Item[]
+  claims       Claim[]
+}
+
+model Item {
+  id            Int              @id @default(autoincrement())
+  title         String
+  category      String // electronics|wallet|id-card|documents|keys|bags|jewellery|clothing|books|other
+  description   String
+  locationFound String
+  dateFound     DateTime
+  imagePath     String?
+  status        String           @default("unclaimed") // unclaimed|claimed
+  addedById     Int
+  addedBy       User             @relation(fields: [addedById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  questions     SecretQuestion[]
+  claims        Claim[]
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+}
+
+model SecretQuestion {
+  id           Int           @id @default(autoincrement())
+  itemId       Int
+  item         Item          @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  question     String
+  answer       String
+  claimAnswers ClaimAnswer[]
+}
+
+model Claim {
+  id               Int           @id @default(autoincrement())
+  itemId           Int
+  // NoAction: deleting an item must explicitly delete its claims first (see DELETE /items/:id).
+  // Keeping this off Cascade also avoids SQL Server's "multiple cascade paths" error, since
+  // SecretQuestion already cascades from Item and ClaimAnswer hangs off both Claim and SecretQuestion.
+  item             Item          @relation(fields: [itemId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  claimantId       Int
+  claimant         User          @relation(fields: [claimantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  ownershipDetails String
+  status           String        @default("pending") // pending|approved|rejected
+  adminNote        String?
+  createdAt        DateTime      @default(now())
+  reviewedAt       DateTime?
+  answers          ClaimAnswer[]
+}
+
+model ClaimAnswer {
+  id         Int            @id @default(autoincrement())
+  claimId    Int
+  claim      Claim          @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  questionId Int
+  // NoAction: see the note on Claim.item above.
+  question   SecretQuestion @relation(fields: [questionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  answer     String // the claimant's submitted answer, not the secret answer
+}
